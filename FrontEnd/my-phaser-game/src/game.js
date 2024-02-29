@@ -3,11 +3,54 @@ import Phaser from 'phaser';
 
 function Game() {
     const [game, setGame] = useState(null); // Phaser 게임 인스턴스를 상태로 관리
+    const [ws, setWs] = useState(null); // 웹소켓 인스턴스를 상태로 관리
+
 
   useEffect(() => {
+    // 웹소켓 연결 설정
+    const websocket = new WebSocket("ws://localhost:8080/ws");
+    setWs(websocket);
+
+    let pos = [0,0];
+    let isChanged = false;
+    websocket.onopen = () => {
+      console.log('WebSocket 연결 성공');
+      
+      const buffer = new ArrayBuffer(100); // 예를 들어, 4바이트 크기의 ArrayBuffer
+      const uint8View = new Uint8Array(buffer);
+      uint8View[0] = 1;
+      websocket.send(buffer);
+    };
+
+    websocket.onmessage = (event) => {
+      // 서버로부터 메시지 수신 시 로직
+      console.log('서버로부터 메시지 수신:', event.data);
+      pos = event.data.split(',');
+      isChanged = true;
+    };
+
+    websocket.onerror = (error) => {
+      console.error('WebSocket 오류 발생:', error);
+    };
+
+    websocket.onclose = () => {
+      console.log('WebSocket 연결 종료');
+    };
+
     if (!game) { 
     let player;
     let cursors;
+
+    const moveto = (sprite, targetX, targetY, duration = 10) => {
+      sprite.scene.tweens.add({
+        targets: sprite,
+        x: targetX,
+        y: targetY,
+        ease: 'Power1',
+        duration: duration,
+        onComplete: function () { console.log('Movement completed!'); }
+    });
+    }
 
     const config = {
       type: Phaser.AUTO,
@@ -65,10 +108,19 @@ function Game() {
           cursors = this.input.keyboard.createCursorKeys();
         },
         update: function() {
+
+          if (isChanged){
+            moveto(player, pos[0], pos[1]);
+            isChanged = false;
+          }
+          // player.setPosition(pos[0], pos[1]);
             // console.log(`Player position - x: ${player.x}, y: ${player.y}`);
             if (cursors.left.isDown) {
             player.setVelocityX(-160);
             player.anims.play('left', true);
+            if (websocket.readyState === WebSocket.OPEN) {
+              websocket.send('left'+pos[0]);
+            }
           } else if (cursors.right.isDown) {
             player.setVelocityX(160);
             player.anims.play('right', true);
